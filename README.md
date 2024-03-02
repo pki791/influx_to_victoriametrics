@@ -1,3 +1,9 @@
+### Updated
+- migration in chunks, edit start and end dates in code
+- removed warnings
+- added timestamps to log outputs
+- added columns which can be dropped during migration
+
 
 Script to import data from InfluxDB >=2.0 to VictoriaMetrics.
 
