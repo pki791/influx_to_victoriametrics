@@ -29,6 +29,23 @@ from influxdb_client.client.warnings import MissingPivotFunction
 warnings.simplefilter("ignore", MissingPivotFunction)
 
 
+#######################################################
+#####  CONFIG                                     #####
+#######################################################
+
+ignored_columns = ["host", "topic"]  # Define the columns you want to ignore
+start_date = '2023-02-20'
+end_date = '2024-03-03'
+
+
+# Generate daily time frames. For other timeframes change freq='D'
+date_ranges = pd.date_range(start=start_date, end=end_date, freq='D')
+time_frames = [(start, end) for start, end in zip(date_ranges, date_ranges[1:])]
+
+# Add a final chunk to now if necessary
+if date_ranges[-1] < pd.to_datetime(end_date):
+    time_frames.append((date_ranges[-1], pd.to_datetime(end_date)))
+
 
 
 def get_tag_cols(dataframe_keys: Iterable) -> Iterable:
@@ -38,7 +55,6 @@ def get_tag_cols(dataframe_keys: Iterable) -> Iterable:
         for k in dataframe_keys
         if not k.startswith("_") and k not in ["result", "table"]
     )
-
 
 def get_influxdb_lines(df: pd.DataFrame) -> str:
     """
@@ -52,10 +68,13 @@ def get_influxdb_lines(df: pd.DataFrame) -> str:
 
     Protocol description: https://docs.influxdata.com/influxdb/v2.0/reference/syntax/line-protocol/
     """
-    line = df["_measurement"]
+    # dont use this ignore this by setting -influxSkipMeasurement
+    #line = df["_measurement"]
+    line = "thisISignored"
 
     for col_name in get_tag_cols(df):
-        line += ("," + col_name + "=") + df[col_name].astype(str)
+        if col_name not in ignored_columns:  # Only process columns not in the ignored list
+            line += ("," + col_name + "=") + df[col_name].astype(str)
 
     line += (
         " "
@@ -94,22 +113,29 @@ def main(args: Dict[str, str]):
     # With really large databases the results should be possibly split further
     # Something like query_data_frame_stream() might be then useful.
     measurements_and_fields = [
+#        gr[0] for df in timeseries for gr in df.groupby(["_measurement", "_field"])
+        # fix from JasperE84 https://github.com/jonppe/influx_to_victoriametrics/issues/1
         gr[0] for df in timeseries for gr in df.groupby(["_measurement", "_field"])
     ]
     print(f"Found {len(measurements_and_fields)} unique time series")
     for meas, field in measurements_and_fields:
-        print(f"Exporting {meas}_{field}")
+      for start, end in time_frames:
+        start_str = start.strftime('%Y-%m-%d')
+        end_str = end.strftime('%Y-%m-%d')
+        print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Exporting {meas}_{field}")
         whole_series = f"""
         from(bucket: "{bucket}")
-        |> range(start: 0, stop: now())
+        |> range(start: {start_str}, stop: {end_str})
         |> filter(fn: (r) => r["_measurement"] == "{meas}")
         |> filter(fn: (r) => r["_field"] == "{field}")
         """
         df = query_api.query_data_frame(whole_series)
-
-        line = get_influxdb_lines(df)
-        # "db" is added as an extra tag for the value.
-        requests.post(f"{url}/write?db={bucket}", data=line)
+        
+        if df is not None and not df.empty:
+            line = get_influxdb_lines(df)
+            # "db" is added as an extra tag for the value.
+            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Processed chunk: {start_str} to {end_str} for {meas}_{field}")
+            requests.post(f"{url}/write?db={bucket}", data=line)
 
 
 if __name__ == "__main__":
