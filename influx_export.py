@@ -115,7 +115,7 @@ def main(args: Dict[str, str]):
     measurements_and_fields = [
 #        gr[0] for df in timeseries for gr in df.groupby(["_measurement", "_field"])
         # fix from JasperE84 https://github.com/jonppe/influx_to_victoriametrics/issues/1
-        gr[0] for df in timeseries for gr in df.groupby(["_measurement", "_field"])
+        gr[0] for df in [timeseries] for gr in df.groupby(["_measurement", "_field"])
     ]
     print(f"Found {len(measurements_and_fields)} unique time series")
     for meas, field in measurements_and_fields:
