@@ -4,14 +4,14 @@
  SPDX-License-Identifier: Apache-2.0
 """
 
-import os
+import os, sys
 
 import pandas as pd
 import requests
 
 from typing import Iterable, Dict, List
 from influxdb_client import InfluxDBClient
-
+from datetime import datetime
 
 try:
     from dotenv import load_dotenv
@@ -19,6 +19,16 @@ try:
     load_dotenv(dotenv_path=".env")
 except ImportError:
     pass
+
+#disable warnings
+import urllib3
+urllib3.disable_warnings()
+
+import warnings
+from influxdb_client.client.warnings import MissingPivotFunction
+warnings.simplefilter("ignore", MissingPivotFunction)
+
+
 
 
 def get_tag_cols(dataframe_keys: Iterable) -> Iterable:
